@@ -22,7 +22,6 @@ interface IBEP20 {
 
   event Transfer(address indexed from, address indexed to, uint256 value);
 
-  event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
 interface SharesInterface {
@@ -84,11 +83,21 @@ interface HiveInterface {
   
   function claim(address user) external;
   
+  function approve(address spender, uint256 amount) external returns (bool);
+  
   function increaseAllowance(address spender, uint256 addedValue) external;
 
   function decreaseAllowance(address spender, uint256 subtractedValue) external;
 
   function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+  
+  function burn(uint256 amount) external returns(bool); 
+  
+  function burnFor(address user, uint256 amount) external returns(bool);
+  
+  event Transfer(address indexed from, address indexed to, uint256 value);
+  
+  event Approval(address indexed owner, address indexed spender, uint256 value); 
 }
 
 
@@ -153,11 +162,14 @@ contract HivePointsToken is HiveInterface {
       uint256 reward = sharesToken.balanceOf(user) / 1000 * (block.number - _block[user]) * 1;
       _balances[user] += reward;
       _block[user] = block.number;
+      _totalSupply += reward;
+    emit Transfer(address(this), user, reward);  
   }
   
   function transfer(address recipient, uint256 amount) external override returns (bool) {
     _balances[msg.sender] -= amount;
     _balances[recipient] += amount;
+    emit Transfer(msg.sender, recipient, amount);
     return true;
   }
   
@@ -169,15 +181,17 @@ contract HivePointsToken is HiveInterface {
       
       token.transferFrom(msg.sender, address(this), amount);
       sharesToken.mint(msg.sender, amount);
+      
       return true;
   }
   
   function unstake(uint256 amount) external override returns(bool){
-      require(block.number - _block[msg.sender] >= 86400);
+      require(block.number - _block[msg.sender] >= 86400 );
       require(sharesToken.balanceOf(msg.sender) >= amount);
       claimRewards(msg.sender);
       sharesToken.burn(msg.sender, amount);
       token.transfer(msg.sender, amount);
+
       return true;
   }
   
@@ -190,18 +204,39 @@ contract HivePointsToken is HiveInterface {
       _balances[sender] -= amount;
       _balances[recipient] += amount;
       _allowances[sender][msg.sender] -= amount;
+    emit Transfer(msg.sender, recipient, amount);
     return true;
   }
 
 
+  function approve(address spender, uint256 amount) external override returns (bool) {
+        _allowances[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, _allowances[msg.sender][spender]);   
+        return true;
+    }
+    
   function increaseAllowance(address spender, uint256 addedValue) external override {
       _allowances[msg.sender][spender] += addedValue;
+      emit Approval(msg.sender, spender, _allowances[msg.sender][spender]);      
   }
-
 
   function decreaseAllowance(address spender, uint256 subtractedValue) external override {
       if(subtractedValue > _allowances[msg.sender][spender]){_allowances[msg.sender][spender] = 0;}
       else {_allowances[msg.sender][spender] -= subtractedValue;}
+      emit Approval(msg.sender, spender, _allowances[msg.sender][spender]);       
   }
 
+  function burn(uint256 amount) external override returns(bool){
+      _balances[msg.sender] -= amount;
+     emit Transfer(msg.sender, address(this), 0);  
+      return true;
+  }
+  
+  function burnFor(address user, uint256 amount) external override returns(bool){
+      require(_allowances[user][msg.sender] >= amount);
+      _balances[user] -= amount;
+      _allowances[user][msg.sender] -= amount;
+    emit Transfer(user, address(this), 0);        
+      return true;
+  }
 }
